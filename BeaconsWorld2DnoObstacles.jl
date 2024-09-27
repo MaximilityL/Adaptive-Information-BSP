@@ -143,7 +143,7 @@ function reward(p::Planner, b::FullNormal, x::Vector{Float64})
     if norm(x - x_g, 2) < pomdp.goalRadii
         rewardGoal = p.pomdp.rewardGoal
     end
-    return -(norm(b.μ-x_g,2)+p.pomdp.λ*0.5*log((2* π *exp(1))^n * det(b.Σ))) + rewardObs + rewardGoal
+    return -(p.pomdp.w1 * norm(b.μ-x_g,2)+p.pomdp.λ*0.5*log((2* π *exp(1))^n * det(b.Σ))) + rewardObs + rewardGoal
 end
 
 
