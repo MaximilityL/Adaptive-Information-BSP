@@ -43,12 +43,12 @@ function estReward(p, b, ba, p_z_x, a, binSize)
         eta += normalizer
     end
     r_belief = r_belief / eta
-    r = rewardState(p, b) + p.pomdp.λ*r_belief 
+    r = p.pomdp.w1 * rewardState(p, b) + p.pomdp.λ*r_belief 
     return (r, r_belief)
 end
 
 function ReuseReward(p, b, r_belief)
-    return rewardState(p, b) + p.pomdp.λ*r_belief
+    return p.pomdp.w1 * rewardState(p, b) + p.pomdp.λ*r_belief
 end
 
 

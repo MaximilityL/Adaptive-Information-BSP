@@ -157,7 +157,7 @@ function exactReward(p, b, ba, a, ba_id)
         eta += normalizer
     end
     r_belief = r_belief / eta
-    r = rewardState(p, b) + p.pomdp.λ*r_belief
+    r = p.pomdp.w1 * rewardState(p, b) + p.pomdp.λ*r_belief
     return r
 end
 
