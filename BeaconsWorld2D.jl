@@ -18,6 +18,7 @@
     rewardGoal::Float64
     rewardObs::Float64
     γ::Float64
+    w1::Float64
 end
 
 
@@ -222,7 +223,8 @@ function BeaconsWorld2D(rng)
                         rewardGoal = 10,
                         rewardObs = -10,
                         rng = rng, a_space=a_space, beacons=beacons, 
-                        obstacles=obstacles, d=d, rmin=rmin) 
+                        obstacles=obstacles, d=d, rmin=rmin,
+                        w1 = 1.0) 
     global pomdp
 
     return pomdp

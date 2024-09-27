@@ -8,13 +8,13 @@ using Parameters
 using TickTock
 using ParticleFilters
 
-sol = "AI_FSSS" # AI_FSSS, AI_FSSS_norollout
+sol = "AI_FSSS_norollout" # AI_FSSS, AI_FSSS_norollout
 
 function main()
     rng = MersenneTwister(1)
 
 
-    Nstatistics = 50  # number of final solutions for statistics
+    Nstatistics = 5  # number of final solutions for statistics
     V_approx, cumulatives, iter_time = 0, [], []
     tick()
     for i in 1:Nstatistics
@@ -81,7 +81,7 @@ end
 
 include("SharedStructs.jl")
 include("BeaconsWorld2D.jl")
-include("BeaconsWorld2DnoObstacles.jl")
+# include("BeaconsWorld2DnoObstacles.jl")
 include("utils.jl")
 include("visualize.jl")
 if sol == "AI_FSSS_norollout"
