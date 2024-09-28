@@ -6,56 +6,65 @@ function ParticleBeliefMDP(b::ParticleCollection, pomdp::POMDPscenario, a::Array
     return b_post
 end
 
-function bores_entropy(ba::ParticleCollection, likelihood::Array{Float64}, 
-    a::Array{Float64, 1}, b::ParticleCollection)
+function bores_entropy(pomdp::POMDPscenario, ba::ParticleCollection, likelihood::Array{Float64}, 
+                       a::Array{Float64}, b::ParticleCollection)
+
+    N = length(particles(ba))  # Number of particles in ba
+    M = length(particles(b))   # Number of particles in b
+
+
     summ = sum(likelihood)
-    if summ != 0.
-        bao_weights = likelihood ./ sum(likelihood)
-    else
-        bao_weights = likelihood 
-    end
-    normalizer, nominator = 0, 0
-    N = length(particles(ba))
-    M = length(particles(b))
-    x_prev = [0.]
+    
+    # Normalize likelihood if the sum is not zero, otherwise keep it unchanged
+    bao_weights = (summ != 0.0) ? likelihood ./ summ : likelihood
+
+    normalizer, nominator = 0.0, 0.0
+
     for i in 1:N
-        x = particles(ba)[i]
-        pdf_prop = 0.
+        x = particles(ba)[i][1:2]  # Use only the first two elements (x, y)
+        pdf_prop = 0.0  # Initialize pdf_prop inside the loop
+        
         for j in 1:M
-            x_prev = particles(b)[j]
-            pdf_prop += pdfMotionModel(pomdp, a, x, x_prev) / M
+            x_prev = particles(b)[j][1:2]  # Use only the first two elements (x, y)
+            
+            # Now we are only handling 2D state vectors
+            pdf_prop += pdfMotionModel(pomdp, a[1:2], x, x_prev) / M
         end
-        if likelihood[i] > eps(10^-100) # avoid rounding errors within log
+
+        # Only compute log if likelihood[i] is positive (avoid negative log issues)
+        if likelihood[i] > eps()  # Using the default eps value
             nominator += log(likelihood[i] * pdf_prop) * bao_weights[i]
             normalizer += likelihood[i] / N
         end
     end
-    normalizer = log(normalizer)
+
+    # Check for numerical stability before logging
+    normalizer = normalizer > 0.0 ? log(normalizer) : 0.0
+
     return normalizer - nominator
 end
 
-function expected_entropy(ba::ParticleCollection, likelihood::Array{Float64}, 
-    a::Array{Float64, 1}, b::ParticleCollection)
+
+function expected_entropy(ba::ParticleCollection, likelihood::Array{Float64}, a::Vector{Float64}, b::ParticleCollection)
     N = length(particles(ba))
     M = length(particles(b))
     pdf_prop = 0
-    bao_weights = likelihood./N # Divide by N to get posterior weight
+    bao_weights = likelihood ./ N  # Divide by N to get posterior weight
     denominator, nominator = 0, 0
 
-    x_prev = [0.]
     for i in 1:N
         x = particles(ba)[i]
-        pdf_prop = 0.
         for j in 1:M
             x_prev = particles(b)[j]
-            pdf_prop += pdfMotionModel(pomdp, a, x, x_prev) / M
+            # Ensure consistent dimensions when calling pdfMotionModel
+            pdf_prop += pdfMotionModel(pomdp, a, x[1:2], x_prev[1:2]) / M  # Use only the position part
         end
-        if likelihood[i] > eps(10^-100) # avoid rounding errors within log
+        if likelihood[i] > eps(10^-100)  # avoid rounding errors within log
             nominator += log(likelihood[i] * pdf_prop) * bao_weights[i]
             denominator += likelihood[i] / N
         end
     end
-    denominator = sum(bao_weights)*log(denominator) 
+    denominator = sum(bao_weights) * log(denominator)
     unnormalized_entropy = denominator - nominator
     normalizer = sum(bao_weights)
     return -unnormalized_entropy, normalizer

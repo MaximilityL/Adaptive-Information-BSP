@@ -43,3 +43,15 @@ end
     Dmax::Int64 # maximum depth of solver
     PF::Any     # particle filter
 end
+
+
+struct UnicycleState
+    x::Float64
+    y::Float64
+    theta::Float64
+end
+
+struct VelocityCommand
+    v::Float64  # Linear velocity
+    omega::Float64  # Angular velocity
+end

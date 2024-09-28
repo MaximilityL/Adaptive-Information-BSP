@@ -8,7 +8,7 @@ using Parameters
 using TickTock
 using ParticleFilters
 
-sol = "AI_FSSS_norollout" # AI_FSSS, AI_FSSS_norollout
+sol = "AI_FSSS" # AI_FSSS, AI_FSSS_norollout
 
 function main()
     rng = MersenneTwister(1)

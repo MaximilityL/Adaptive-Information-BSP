@@ -37,6 +37,55 @@ function plotBeacon(plt, beacons)
 
 end
 
+# function visualizeTrajectory(planner::Planner, x_gt, b_gt, b_PF)
+#     Plots.theme(:dark)
+#     plot()
+#     Obs_trajectory = scatter!(planner.pomdp.beacons[:], markersize = 25, markercolor = :transparent, 
+#     markerstrokecolor ="blue", markerstrokewidth=1, label="")
+#     plotBeacon(Obs_trajectory, planner.pomdp.beacons)
+    
+#     var_trajectory = []
+#     color_range = [( 255, 255, 255), ( 39,  64, 139)]
+#     for i in 1:length(b_PF)
+#         clr = color_range[1] .+ i.*(color_range[2].-color_range[1])./length(b_PF)
+#         clr = clr ./ 255
+#         if i == 5
+#             lbl = "particles"
+#         else
+#             lbl = ""
+#         end
+#         Particle_trajectory = scatter!([p[1] for p in particles(b_PF[i])], [p[2] for p in particles(b_PF[i])], color=RGB(clr...), markersize=3, label=lbl,markerstrokewidth=0)
+#     end
+
+#     # obstacles
+#     for i in 1:length(planner.pomdp.obstacles[:,1])
+#         # circleShape(h,k,r) - (h,k) denote center of the circle, r radius
+#         if i == 1
+#             lbl = "low reward area"
+#         else
+#             lbl = ""
+#         end
+#         Obs_trajectory = plot!(circleShape(planner.pomdp.obstacles[i,1], planner.pomdp.obstacles[i,2], planner.pomdp.obsRadii), seriestype = [:shape,], lw = 0.1, 
+#         c = :red, linecolor = :black, legend = false, fillalpha = 0.4, aspect_ratio = 1, label=lbl)
+#     end
+
+#     # goal
+#     Obs_trajectory = scatter!([planner.pomdp.goal[1]], [planner.pomdp.goal[2]], lw = 0.1, 
+#     markershape=:star5, markersize = 30,
+#     c = :green, linecolor = :black, legend = true, fillalpha = 0.8, aspect_ratio = 1,label="goal")
+
+#     # init_pose
+#     Obs_trajectory = scatter!([x_gt[1][1]], [x_gt[1][2]], lw = 4, 
+#     markershape=:cross, markersize = 30,
+#     c = :yellow, linecolor = :black, legend = true, fillalpha = 1, aspect_ratio = 1,label="initial pose")
+
+#     Obs_trajectory = scatter!([x[1] for x in x_gt], [x[2] for x in x_gt],color="yellow", label="ground truth",legend=:topleft)
+#     Obs_trajectory = plot!([x[1] for x in x_gt], [x[2] for x in x_gt],color="yellow", label="",legend=true)
+  
+#     display(Obs_trajectory)
+#     return
+# end
+
 function visualizeTrajectory(planner::Planner, x_gt, b_gt, b_PF)
     Plots.theme(:dark)
     plot()
@@ -45,7 +94,9 @@ function visualizeTrajectory(planner::Planner, x_gt, b_gt, b_PF)
     plotBeacon(Obs_trajectory, planner.pomdp.beacons)
     
     var_trajectory = []
-    color_range = [( 255, 255, 255), ( 39,  64, 139)]
+    color_range = [(255, 255, 255), (39, 64, 139)]
+    
+    # Plot the particles for each time step
     for i in 1:length(b_PF)
         clr = color_range[1] .+ i.*(color_range[2].-color_range[1])./length(b_PF)
         clr = clr ./ 255
@@ -54,38 +105,55 @@ function visualizeTrajectory(planner::Planner, x_gt, b_gt, b_PF)
         else
             lbl = ""
         end
-        Particle_trajectory = scatter!([p[1] for p in particles(b_PF[i])], [p[2] for p in particles(b_PF[i])], color=RGB(clr...), markersize=3, label=lbl,markerstrokewidth=0)
+        Particle_trajectory = scatter!([p[1] for p in particles(b_PF[i])], 
+                                       [p[2] for p in particles(b_PF[i])], 
+                                       color=RGB(clr...), markersize=3, label=lbl, markerstrokewidth=0)
     end
 
-    # obstacles
+    # Plot obstacles
     for i in 1:length(planner.pomdp.obstacles[:,1])
-        # circleShape(h,k,r) - (h,k) denote center of the circle, r radius
         if i == 1
             lbl = "low reward area"
         else
             lbl = ""
         end
-        Obs_trajectory = plot!(circleShape(planner.pomdp.obstacles[i,1], planner.pomdp.obstacles[i,2], planner.pomdp.obsRadii), seriestype = [:shape,], lw = 0.1, 
-        c = :red, linecolor = :black, legend = false, fillalpha = 0.4, aspect_ratio = 1, label=lbl)
+        Obs_trajectory = plot!(circleShape(planner.pomdp.obstacles[i,1], 
+                                           planner.pomdp.obstacles[i,2], 
+                                           planner.pomdp.obsRadii), 
+                               seriestype = [:shape], lw = 0.1, 
+                               c = :red, linecolor = :black, legend = false, fillalpha = 0.4, 
+                               aspect_ratio = 1, label=lbl)
     end
 
-    # goal
+    # Plot goal
     Obs_trajectory = scatter!([planner.pomdp.goal[1]], [planner.pomdp.goal[2]], lw = 0.1, 
-    markershape=:star5, markersize = 30,
-    c = :green, linecolor = :black, legend = true, fillalpha = 0.8, aspect_ratio = 1,label="goal")
+                              markershape=:star5, markersize = 30,
+                              c = :green, linecolor = :black, legend = true, fillalpha = 0.8, 
+                              aspect_ratio = 1, label="goal")
 
-    # init_pose
+    # Plot initial pose
     Obs_trajectory = scatter!([x_gt[1][1]], [x_gt[1][2]], lw = 4, 
-    markershape=:cross, markersize = 30,
-    c = :yellow, linecolor = :black, legend = true, fillalpha = 1, aspect_ratio = 1,label="initial pose")
+                              markershape=:cross, markersize = 30,
+                              c = :yellow, linecolor = :black, legend = true, fillalpha = 1, 
+                              aspect_ratio = 1, label="initial pose")
 
-    Obs_trajectory = scatter!([x[1] for x in x_gt], [x[2] for x in x_gt],color="yellow", label="ground truth",legend=:topleft)
-    Obs_trajectory = plot!([x[1] for x in x_gt], [x[2] for x in x_gt],color="yellow", label="",legend=true)
-  
+    # Ground truth trajectory
+    Obs_trajectory = scatter!([x[1] for x in x_gt], [x[2] for x in x_gt],
+                              color="yellow", label="ground truth", legend=:topleft)
+    Obs_trajectory = plot!([x[1] for x in x_gt], [x[2] for x in x_gt], 
+                           color="yellow", label="", legend=true)
+
+    # **Add orientation arrows** using quiver!
+    arrow_length = 0.3  # Length of the orientation arrows
+    for i in 1:length(x_gt)
+        θ = x_gt[i][3]  # Extract orientation (θ)
+        quiver!([x_gt[i][1]], [x_gt[i][2]], [cos(θ) * arrow_length], [sin(θ) * arrow_length], 
+                label="", color=:red, arrow=true, lw=2, legend=false)
+    end
+
     display(Obs_trajectory)
     return
 end
-
 
 function actionQvalues(p, t, a_id=nothing)
     mids, ∆s = [], []

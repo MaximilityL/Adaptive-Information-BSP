@@ -25,16 +25,16 @@ end
 function update_observation_cov(pomdp, x)
     mindist = Inf
     for i in 1:length(pomdp.beacons[:,1])
-        distance = norm(x - pomdp.beacons[i,:])
+        distance = norm(x[1:2] - pomdp.beacons[i,:])  # Use only the position part of x
         if distance <= pomdp.d
-            pomdp.Σv = Matrix(Diagonal([1, 1]))*0.01^2
+            pomdp.Σv = Matrix(Diagonal([0.01^2, 0.01^2]))  # 2D covariance for position
             return pomdp.Σv
         elseif distance < mindist
             mindist = distance
         end
     end
     # if no beacon is near by, get noise meas.
-    pomdp.Σv = Matrix(Diagonal([1, 1]))*0.1*mindist
+    pomdp.Σv = Matrix(Diagonal([0.1*mindist, 0.1*mindist]))  # 2D covariance for position
     return pomdp.Σv
 end
 
@@ -43,30 +43,41 @@ function dynamics(x::Array{Float64, 1}, a::Array{Float64, 1}, rng)
     return SampleMotionModel(pomdp, a, x)
 end
 
-function pdfObservationModel(x_prev::Vector{Float64}, a::Vector{Float64}, x::Array{Float64, 1}, obs::Array{Float64, 1})
+function pdfObservationModel(x_prev::Vector{Float64}, a::Vector{Float64}, x::Vector{Float64}, obs::Vector{Float64})
     global pomdp
     pomdp.Σv = update_observation_cov(pomdp, x)
-    Nv = MvNormal([0, 0], pomdp.Σv)
-    noise = obs - x
+    
+    # Only compare the position (first two elements)
+    Nv = MvNormal([0, 0], pomdp.Σv[1:2, 1:2])
+    noise = obs - x[1:2]  # Use only the position part of the state
+    
     return pdf(Nv, noise)
 end
 
-# input: belief at k, b(x_k), action a_k
-# output: predicted gaussian belief b(xp)~N((μp,Σp)
 function PropagateBelief(b::FullNormal, pomdp::POMDPscenario, a::Array{Float64, 1})::FullNormal
     μb, Σb = b.μ, b.Σ
-    F  = pomdp.F
     Σw, Σv = pomdp.Σw, pomdp.Σv
-    # calculations
-    A = [ Σb^(-0.5) zeros(2,2); -Σw^(-0.5) Σw^(-0.5)]
-    b = [ Σb^(-0.5)*μb; Σw^(-0.5)*a]
-    # predict
-    μp = inv(transpose(A)*A)*(transpose(A)*b)
-    Σp = inv(transpose(A)*A) 
-    μp = μp[3:4] # add your code here 
-    Σp = Σp[3:4, 3:4] # add your code here 
+
+    v = a[1]  # Linear velocity
+    ω = a[2]  # Angular velocity
+    θ = μb[3]  # Current orientation
+
+    Δx = v * cos(θ)
+    Δy = v * sin(θ)
+    new_θ = θ + ω
+
+    # Predict new mean (μp)
+    μp = [μb[1] + Δx, μb[2] + Δy, new_θ]
+
+    # Predict new covariance (Σp) - Update covariance propagation logic accordingly
+    A = [ Σb^(-0.5) zeros(3,3); -Σw^(-0.5) Σw^(-0.5) ]
+    b = [Σb^(-0.5) * μb; Σw^(-0.5) * a]
+    Σp = inv(transpose(A) * A)  # This should yield a 3x3 covariance matrix now
+    Σp = Σp[4:6, 4:6]
+
     return MvNormal(μp, Σp)
-end 
+end
+
 
 # input: belief at k, b(x_k), action a_k and observation z_k+1
 # output: updated posterior gaussian belief b(x')~N(μb′, Σb′)
@@ -75,8 +86,8 @@ function PropagateUpdateBelief(b::FullNormal, pomdp::POMDPscenario, a::Array{Flo
     F  = pomdp.F
     Σw, Σv = pomdp.Σw, pomdp.Σv
     # calculations
-    A = [ Σb^(-0.5) zeros(2,2); -Σw^(-0.5) Σw^(-0.5); zeros(2,2) Σv^(-0.5)]
-    b = [ Σb^(-0.5)*μb; Σw^(-0.5)*a; Σv^(-0.5)*o ]
+    A = [ Σb^(-0.5) zeros(3,3); -Σw^(-0.5) Σw^(-0.5); zeros(3,3) Σv^(-0.5)]
+    b = [ Σb^(-0.5) * μb; Σw^(-0.5) * a; Σv^(-0.5) * o ]
     # predict
     μp = inv(transpose(A)*A)*(transpose(A)*b)
     Σp = inv(transpose(A)*A)
@@ -87,52 +98,93 @@ function PropagateUpdateBelief(b::FullNormal, pomdp::POMDPscenario, a::Array{Flo
     return MvNormal(μb′, Σb′)
 end
 
-# input: state x and action a
-# output: next state x'
 function SampleMotionModel(pomdp::POMDPscenario, a::Array{Float64, 1}, x::Array{Float64, 1})
-    Nw = MvNormal([0, 0], pomdp.Σw) # multivariate gaussian
+    # a[1] is linear velocity, a[2] is angular velocity
+    v = a[1]  # Linear velocity
+    ω = a[2]  # Angular velocity
+
+    # Extract current orientation (angle) from the state
+    θ = x[3]  # x[3] is the orientation (angle in radians)
+
+    # Update position based on linear velocity and current orientation
+    Δx = v * cos(θ)  # Change in x-position
+    Δy = v * sin(θ)  # Change in y-position
+
+    # Update the orientation based on angular velocity
+    new_θ = θ + ω
+
+    # Add noise to the movement (optional)
+    Nw = MvNormal([0, 0, 0], pomdp.Σw)  # Motion noise
     w = rand(pomdp.rng, Nw)
-    return x + a + w
-end 
 
-function pdfMotionModel(pomdp::POMDPscenario, a::Array{Float64, 1}, x::Array{Float64, 1}, x_prev::Array{Float64, 1})
-    Nw = MvNormal([0, 0], pomdp.Σw)
-    w = x - x_prev - a
-    return pdf(Nw,w)
-end 
+    # Return the new state: [new_x, new_y, new_orientation]
+    return [x[1] + Δx + w[1], x[2] + Δy + w[2], new_θ]
+end
 
-# input: state x
-# output: available observation z_rel and index, null otherwise
+function pdfMotionModel(pomdp::POMDPscenario, a::Vector{Float64}, x::Vector{Float64}, x_prev::Vector{Float64})
+    if length(x) == 3 && length(x_prev) == 3
+        # Handle 3D state (x, y, theta)
+        # Expected position change due to velocity (a[1]) and angular velocity (a[2]) over time Δt
+        Δx_expected = a[1] * cos(x_prev[3])   # Linear velocity affects x
+        Δy_expected = a[1] * sin(x_prev[3])  # Linear velocity affects y
+        Δθ_expected = a[2]   # Angular velocity affects orientation (theta)
+        
+        # Calculate the difference between the actual state change and expected change
+        w = [(x[1] - x_prev[1]) - Δx_expected,
+             (x[2] - x_prev[2]) - Δy_expected,
+             (x[3] - x_prev[3]) - Δθ_expected]
+
+        Nw = MvNormal([0, 0, 0], pomdp.Σw)  # 3D noise for motion
+    elseif length(x) == 2 && length(x_prev) == 2
+        # Handle 2D state (x, y) only
+        Nw = MvNormal([0, 0], pomdp.Σw[1:2, 1:2])  # 2D covariance for position
+        w = x - x_prev - a[1:2]  # Only take position from action
+    else
+        throw(DimensionMismatch("x and x_prev must both be 2D or 3D vectors"))
+    end
+
+    return pdf(Nw, w)
+end
+
 function GenerateObservationFromBeacons(pomdp::POMDPscenario, x::Array{Float64, 1}, fixed_cov::Bool)::Union{NamedTuple, Nothing}
     distances = zeros(length(pomdp.beacons[:,1]))
     for index in 1:length(pomdp.beacons[:,1])
-        distances[index] = norm(x - pomdp.beacons[index, :]) # calculate distances from x to all beacons
+        distances[index] = norm(x[1:2] - pomdp.beacons[index, :])  # Position only
     end
-    index = argmin(distances) # get observation only from nearest beacon
+    index = argmin(distances)  # Nearest beacon
+
     pomdp.Σv = update_observation_cov(pomdp, x)
-    Nv = MvNormal([0, 0], pomdp.Σv)
+    Nv = MvNormal([0, 0], pomdp.Σv)  # Measurement noise
     v = rand(pomdp.rng, Nv)
-    dX = x - pomdp.beacons[index, :]
-    obs = dX + v 
-    return (obs=obs, index=index) 
+    dX = x[1:2] - pomdp.beacons[index, :]
+
+    # Optionally include orientation in observation
+    obs = [dX[1] + v[1], dX[2] + v[2]]  # Including orientation (if relevant)
+    return (obs=obs, index=index)
 end
+
 
 function SampleObservation(p::Planner, x_propagated::Array{Float64, 1})
     o = GenerateObservationFromBeacons(p.pomdp, x_propagated, false)
-    return o[1] + p.pomdp.beacons[o[2], :]
+    
+    # Make sure it returns only the position component if you're only dealing with 2D observations
+    return o.obs + p.pomdp.beacons[o.index, :]
 end
 
-function likelihood(x::Vector{Float64},o::Vector{Float64})
-    return pdfObservationModel([0.], [0.], x, o)
+function likelihood(x::Vector{Float64}, o::Vector{Float64})
+    return pdfObservationModel([0.0, 0.0], [0.0, 0.0], x[1:2], o)  # Compare only the position part
 end
 
 function initBelief()
-    μ0 = [0.0,0.0]
-    Σ0 = [1.0 0.0; 0.0 1.0]
+    μ0 = [0.0, 0.0, 0.0]  # Initial position and orientation
+    Σ0 = [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 0.1]  # Covariance for position and orientation
     return MvNormal(μ0, Σ0)
 end
+# initState() = [-0.5, -0.2]
 
-initState() = [-0.5, -0.2]
+function initState()
+    return [-0.5, -0.2, 0.0]  # Initial position (x, y) and orientation (θ)
+end
 
 function reward(p::Planner, b::FullNormal, x::Vector{Float64})
     x_g, x_o = p.pomdp.goal, p.pomdp.obstacles[1,:]
@@ -202,18 +254,19 @@ function BeaconsWorld2D(rng)
                  10.0 * rand(rng,1) 3.0;
                  10.0 * rand(rng,1) 9.0;]
     goal = [10, 10]
-    a_space = [1.0  0.0;
-              -1.0  0.0;
-               0.0  1.0;
-               0.0 -1.0;
-               1/sqrt(2)  1/sqrt(2);
-              -1/sqrt(2)  1/sqrt(2);
-               1/sqrt(2) -1/sqrt(2);
-              -1/sqrt(2) -1/sqrt(2);
-               0.0  0.0             ]
-    pomdp = POMDPscenario(F=[1.0 0.0; 0.0 1.0],
-                        Σw=0.1*[1.0 0.0; 0.0 1.0],
-                        Σv=0.01*[1.0 0.0; 0.0 1.0], 
+    a_space = [1.0  0.0;  # Move forward with velocity 1.0
+          -1.0  0.0;  # Move backward with velocity -1.0
+           0.0  0.5;  # Turn right with angular velocity 0.5
+           0.0 -0.5;  # Turn left with angular velocity -0.5
+           1.0  0.5;  # Move forward while turning right
+           1.0 -0.5;  # Move forward while turning left
+          -1.0  0.5;  # Move backward while turning right
+          -1.0 -0.5]  # Move backward while turning left
+    pomdp = POMDPscenario(F = [1.0 0.0 0.0;
+     0.0 1.0 0.0;
+     0.0 0.0 1.0],
+    Σw = 0.1 * [1.0 0.0 0.0; 0.0 1.0 0.0; 0.0 0.0 0.05],
+    Σv = 0.01 * [1.0 0.0; 0.0 1.0], 
                         γ=0.99,
                         Dmax = 25,
                         λ = 1,
@@ -221,7 +274,7 @@ function BeaconsWorld2D(rng)
                         goalRadii = 1.,
                         goal = goal,
                         rewardGoal = 10,
-                        rewardObs = -100,
+                        rewardObs = -10,
                         rng = rng, a_space=a_space, beacons=beacons, 
                         obstacles=obstacles, d=d, rmin=rmin,
                         w1 = 1.0) 
