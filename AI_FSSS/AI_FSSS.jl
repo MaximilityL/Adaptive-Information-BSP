@@ -288,16 +288,53 @@ function rollout(p::Planner,b::Any,depth::Int)
     return r + p.pomdp.γ*rollout(p,b_post,depth-1)
 end
 
-function estRewardrollout(p, b::ParticleCollection{Vector{Float64}}, o::Vector{Float64}, a::Vector{Float64}, bp::Vector{Vector{Float64}}, b_prev::ParticleCollection{Vector{Float64}})
-    # Convert bp to ParticleCollection if it's not already
-    bp_collection = ParticleCollection(bp)
+# function estRewardrollout(p, b::ParticleCollection{Vector{Float64}}, o::Vector{Float64}, a::Vector{Float64}, bp::Vector{Vector{Float64}}, b_prev::ParticleCollection{Vector{Float64}})
+#     # Convert bp to ParticleCollection if it's not already
+#     bp_collection = ParticleCollection(bp)
 
+#     x_g = p.pomdp.goal
+#     x_o = p.pomdp.obstacles[1, :]
+#     lambda = p.pomdp.λ
+
+#     r_b_x, rewardObs, rewardGoal = 0, 0, 0
+
+#     # Iterate over the particles in the belief
+#     for x in particles(b)
+#         r_b_x += norm(x[1:2] - x_g, 2) / length(particles(b))
+#         if norm(x[1:2] - x_o, 2) < p.pomdp.obsRadii
+#             rewardObs += p.pomdp.rewardObs / length(particles(b))
+#         end
+#         if norm(x[1:2] - x_g, 2) < p.pomdp.goalRadii
+#             rewardGoal += p.pomdp.rewardGoal / length(particles(b))
+#         end
+#     end
+
+#     # Iterate over particles in the ParticleCollection bp_collection
+#     for i in 1:length(particles(bp_collection))
+#         x = particles(bp_collection)[i]
+#         for j in 1:length(particles(b_prev))
+#             x_prev = particles(b_prev)[j]
+#             if length(x) == 2 && length(x_prev) == 2
+#                 pdf_prop = pdfMotionModel(p.pomdp, a[1:2], x[1:2], x_prev[1:2]) / length(particles(b_prev))
+#             elseif length(x) == 3 && length(x_prev) == 3
+#                 pdf_prop = pdfMotionModel(p.pomdp, a, x, x_prev) / length(particles(b_prev))
+#             else
+#                 throw(DimensionMismatch("x and x_prev must both be 2D or 3D vectors"))
+#             end
+#         end
+#     end
+
+#     entropy = bores_entropy(p.pomdp, bp_collection, o, a, b_prev)
+#     return -(r_b_x + lambda * entropy) + rewardObs + rewardGoal
+# end
+
+
+function estRewardrollout(p, b, o, a, bp, b_prev)
     x_g = p.pomdp.goal
-    x_o = p.pomdp.obstacles[1, :]
+    x_o = p.pomdp.obstacles[1,:]
     lambda = p.pomdp.λ
-
+    
     r_b_x, rewardObs, rewardGoal = 0, 0, 0
-
     # Iterate over the particles in the belief
     for x in particles(b)
         r_b_x += norm(x[1:2] - x_g, 2) / length(particles(b))
@@ -309,25 +346,12 @@ function estRewardrollout(p, b::ParticleCollection{Vector{Float64}}, o::Vector{F
         end
     end
 
-    # Iterate over particles in the ParticleCollection bp_collection
-    for i in 1:length(particles(bp_collection))
-        x = particles(bp_collection)[i]
-        for j in 1:length(particles(b_prev))
-            x_prev = particles(b_prev)[j]
-            if length(x) == 2 && length(x_prev) == 2
-                pdf_prop = pdfMotionModel(p.pomdp, a[1:2], x[1:2], x_prev[1:2]) / length(particles(b_prev))
-            elseif length(x) == 3 && length(x_prev) == 3
-                pdf_prop = pdfMotionModel(p.pomdp, a, x, x_prev) / length(particles(b_prev))
-            else
-                throw(DimensionMismatch("x and x_prev must both be 2D or 3D vectors"))
-            end
-        end
-    end
+    x = rand(p.pomdp.rng, bp)
+    weights = reweight(p.solver.PF, b, a, bp, o)
+    entropy = bores_entropy(p.pomdp, ParticleCollection(bp), weights, a, b_prev)
 
-    entropy = bores_entropy(p.pomdp, bp_collection, o, a, b_prev)
-    return -(r_b_x + lambda * entropy) + rewardObs + rewardGoal
+    return -(r_b_x + lambda*entropy) + rewardObs + rewardGoal
 end
-
 function simulate(p::Planner,b_id::Int,d::Int)
     if d == 0
         return 0, 0
@@ -414,8 +438,8 @@ function simulate(p::Planner,b_id::Int,d::Int)
 end
 
 function Solver(B, A, pf::Any)
-    solver = Adaptive(c = 1, C = 4, InitBinSize = 4, n = 50000, n_refine = 10, kₒ = 1, αₒ = 1, 
-                        kₐ = 100, αₐ = 1, ϵ=0.01, Dmax = 10, PF = pf)
+    solver = Adaptive(c = 1, C = 4, InitBinSize = 4, n = 100000, n_refine = 10, kₒ = 3, αₒ = 1, 
+                        kₐ = 100, αₐ = 1, ϵ=0.01, Dmax = 30, PF = pf)
     
     # define tree and tree types
     tree = Tree(B,A)

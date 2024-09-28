@@ -14,7 +14,7 @@ function main()
     rng = MersenneTwister(1)
 
 
-    Nstatistics = 5  # number of final solutions for statistics
+    Nstatistics = 10  # number of final solutions for statistics
     V_approx, cumulatives, iter_time = 0, [], []
     tick()
     for i in 1:Nstatistics
@@ -23,7 +23,7 @@ function main()
 
     # create particle filter
     model = ParticleFilterModel{Vector{Float64}}(dynamics, pdfObservationModel)
-    N = 20 # number of particles
+    N = 10 # number of particles
     pf = BootstrapFilter(model, N, rng)
 
     # init trajectory

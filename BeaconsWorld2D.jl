@@ -56,7 +56,7 @@ end
 
 function PropagateBelief(b::FullNormal, pomdp::POMDPscenario, a::Array{Float64, 1})::FullNormal
     μb, Σb = b.μ, b.Σ
-    Σw, Σv = pomdp.Σw, pomdp.Σv
+    Σw = pomdp.Σw  # Σv isn't used in propagation as it's related to observation noise
 
     v = a[1]  # Linear velocity
     ω = a[2]  # Angular velocity
@@ -69,34 +69,70 @@ function PropagateBelief(b::FullNormal, pomdp::POMDPscenario, a::Array{Float64, 
     # Predict new mean (μp)
     μp = [μb[1] + Δx, μb[2] + Δy, new_θ]
 
-    # Predict new covariance (Σp) - Update covariance propagation logic accordingly
+    # Create expected delta vector from the action
+    Δ = [Δx, Δy, ω]
+
+    # Adjust the covariance propagation to include the influence of Σw
     A = [ Σb^(-0.5) zeros(3,3); -Σw^(-0.5) Σw^(-0.5) ]
-    b = [Σb^(-0.5) * μb; Σw^(-0.5) * a]
-    Σp = inv(transpose(A) * A)  # This should yield a 3x3 covariance matrix now
-    Σp = Σp[4:6, 4:6]
+    b_adjusted = [Σb^(-0.5) * μb; Σw^(-0.5) * Δ]  # Apply Δ instead of action directly
+
+    # Predict mean
+    μp_adjusted = inv(transpose(A) * A) * (transpose(A) * b_adjusted)
+    Σp = inv(transpose(A) * A)
+
+    # Extract the 3D (x, y, θ) portion for the updated belief
+    Σp = Σp[4:6, 4:6]  # Covariance for updated state (x, y, θ)
+    μp = μp_adjusted[4:6]  # Mean for the updated state (x, y, θ)
 
     return MvNormal(μp, Σp)
 end
 
 
-# input: belief at k, b(x_k), action a_k and observation z_k+1
-# output: updated posterior gaussian belief b(x')~N(μb′, Σb′)
+# Input: belief at k, b(x_k), action a_k and observation z_k+1
+# Output: updated posterior gaussian belief b(x')~N(μb′, Σb′)
 function PropagateUpdateBelief(b::FullNormal, pomdp::POMDPscenario, a::Array{Float64, 1}, o::Array{Float64, 1})::FullNormal
     μb, Σb = b.μ, b.Σ
-    F  = pomdp.F
-    Σw, Σv = pomdp.Σw, pomdp.Σv
-    # calculations
-    A = [ Σb^(-0.5) zeros(3,3); -Σw^(-0.5) Σw^(-0.5); zeros(3,3) Σv^(-0.5)]
-    b = [ Σb^(-0.5) * μb; Σw^(-0.5) * a; Σv^(-0.5) * o ]
-    # predict
-    μp = inv(transpose(A)*A)*(transpose(A)*b)
-    Σp = inv(transpose(A)*A)
-    # update
-    # marginalize
-    μb′ = μp[3:4]
-    Σb′ = Σp[3:4, 3:4]
+    Σw, Σv = pomdp.Σw, pomdp.Σv  # Process and observation noise covariance
+
+    # Extract action dynamics
+    v = a[1]  # Linear velocity
+    ω = a[2]  # Angular velocity
+    θ = μb[3]  # Current orientation
+
+    # Propagate dynamics
+    Δx = v * cos(θ)
+    Δy = v * sin(θ)
+    new_θ = θ + ω
+
+    # Predicted new mean from dynamics
+    μp = [μb[1] + Δx, μb[2] + Δy, new_θ]
+
+    # Adjust the covariance propagation with respect to the action dynamics
+    Δ = [Δx, Δy, ω]  # Vector of expected changes due to the action
+    # Assuming Σv is a 2x2 matrix
+    Σv_adjusted = [Σv[1,1] Σv[1,2] 0;
+    Σv[2,1] Σv[2,2] 0;
+    0       0       1]
+   # Construct matrix A for prediction and update steps
+    A = [ Σb^(-0.5) zeros(3,3);    # State prediction part (3x3 covariance for state, no influence on observation)
+    -Σw^(-0.5) Σw^(-0.5);     # Process noise (3x3) acting on state and action
+    zeros(3,3) Σv_adjusted^(-0.5)]    # Observation noise (2x2) acting on the observation, zeros for the state part
+
+    
+    # b_adjusted now reflects both the action dynamics and observation
+    b_adjusted = [Σb^(-0.5) * μb; Σw^(-0.5) * Δ; Σv_adjusted^(-0.5) * [o; 0]]
+
+    # Predict step: compute the updated mean and covariance
+    μp_adjusted = inv(transpose(A) * A) * (transpose(A) * b_adjusted)
+    Σp = inv(transpose(A) * A)
+
+    # Extract updated mean and covariance (state and orientation)
+    μb′ = μp_adjusted[1:3]  # The first 3 elements correspond to the updated state (x, y, θ)
+    Σb′ = Σp[1:3, 1:3]      # Extract the 3x3 covariance matrix for the state
+
     return MvNormal(μb′, Σb′)
 end
+
 
 function SampleMotionModel(pomdp::POMDPscenario, a::Array{Float64, 1}, x::Array{Float64, 1})
     # a[1] is linear velocity, a[2] is angular velocity
@@ -190,13 +226,13 @@ function reward(p::Planner, b::FullNormal, x::Vector{Float64})
     x_g, x_o = p.pomdp.goal, p.pomdp.obstacles[1,:]
     rewardObs, rewardGoal = 0, 0
     n = length(b.μ) # dimension of state vector
-    if norm(x - x_o, 2) < pomdp.obsRadii
+    if norm(x[1:2] - x_o, 2) < pomdp.obsRadii
         rewardObs = p.pomdp.rewardObs
     end
-    if norm(x - x_g, 2) < pomdp.goalRadii
+    if norm(x[1:2] - x_g, 2) < pomdp.goalRadii
         rewardGoal = p.pomdp.rewardGoal
     end
-    return -(p.pomdp.w1 * norm(b.μ-x_g,2)+p.pomdp.λ*0.5*log((2* π *exp(1))^n * det(b.Σ))) + rewardObs + rewardGoal
+    return -(p.pomdp.w1 * norm(b.μ[1:2]-x_g,2)+p.pomdp.λ*0.5*log((2* π *exp(1))^n * det(b.Σ))) + rewardObs + rewardGoal
 end
 
 
@@ -219,8 +255,15 @@ function oneStepSim(p::Planner, b::FullNormal, x_prev::Array{Float64, 1}, a::Arr
     # create GT Trajectory, update horizon
     p.pomdp.Dmax -= 1
 
+    # Print the selected action (v, ω)
+    println("Selected action (v, ω): ", a[1], ", ", a[2])
+
     b_prop = PropagateBelief(b, p.pomdp, a)
     x = SampleMotionModel(p.pomdp, a, x_prev)
+
+    # Print the current x, y, and θ (theta) values
+    println("Current state (x, y, θ): ", x[1], ", ", x[2], ", ", x[3])
+
     o_rel = GenerateObservationFromBeacons(p.pomdp, x, false)
     if o_rel === nothing
         b_post = b_prop
@@ -235,9 +278,13 @@ function oneStepSim(p::Planner, b::FullNormal, x_prev::Array{Float64, 1}, a::Arr
     return b_post, r, x, o
 end
 
+
 function BeaconsWorld2D(rng)
     d = 1.0 
     rmin = 0.1
+    linear_velocity_norm = 2.0
+    angular_velocity_norm = deg2rad(90)
+
     # set beacons locations 
     beacons = [0.0 0.0; 
                #2.0 0.0; 
@@ -254,14 +301,15 @@ function BeaconsWorld2D(rng)
                  10.0 * rand(rng,1) 3.0;
                  10.0 * rand(rng,1) 9.0;]
     goal = [10, 10]
-    a_space = [1.0  0.0;  # Move forward with velocity 1.0
-          -1.0  0.0;  # Move backward with velocity -1.0
-           0.0  0.5;  # Turn right with angular velocity 0.5
-           0.0 -0.5;  # Turn left with angular velocity -0.5
-           1.0  0.5;  # Move forward while turning right
-           1.0 -0.5;  # Move forward while turning left
-          -1.0  0.5;  # Move backward while turning right
-          -1.0 -0.5]  # Move backward while turning left
+    a_space = [linear_velocity_norm  0.0;  # Move forward with velocity linear_velocity_norm
+          -linear_velocity_norm  0.0;  # Move backward with velocity -linear_velocity_norm
+           0.0  angular_velocity_norm;  # Turn right with angular velocity angular_velocity_norm
+           0.0 -angular_velocity_norm;  # Turn left with angular velocity -angular_velocity_norm
+           linear_velocity_norm  angular_velocity_norm;  # Move forward while turning right
+           linear_velocity_norm -angular_velocity_norm;  # Move forward while turning left
+          -linear_velocity_norm  angular_velocity_norm;  # Move backward while turning right
+          -linear_velocity_norm -angular_velocity_norm;
+          0.0 0.0]  # Don't Change Nothing
     pomdp = POMDPscenario(F = [1.0 0.0 0.0;
      0.0 1.0 0.0;
      0.0 0.0 1.0],
@@ -273,7 +321,7 @@ function BeaconsWorld2D(rng)
                         obsRadii = 1.5,
                         goalRadii = 1.,
                         goal = goal,
-                        rewardGoal = 10,
+                        rewardGoal = 20,
                         rewardObs = -10,
                         rng = rng, a_space=a_space, beacons=beacons, 
                         obstacles=obstacles, d=d, rmin=rmin,

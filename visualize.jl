@@ -143,13 +143,13 @@ function visualizeTrajectory(planner::Planner, x_gt, b_gt, b_PF)
     Obs_trajectory = plot!([x[1] for x in x_gt], [x[2] for x in x_gt], 
                            color="yellow", label="", legend=true)
 
-    # **Add orientation arrows** using quiver!
-    arrow_length = 0.3  # Length of the orientation arrows
-    for i in 1:length(x_gt)
-        θ = x_gt[i][3]  # Extract orientation (θ)
-        quiver!([x_gt[i][1]], [x_gt[i][2]], [cos(θ) * arrow_length], [sin(θ) * arrow_length], 
-                label="", color=:red, arrow=true, lw=2, legend=false)
-    end
+    # # **Add orientation arrows** using quiver!
+    # arrow_length = 0.3  # Length of the orientation arrows
+    # for i in 1:length(x_gt)
+    #     θ = x_gt[i][3]  # Extract orientation (θ)
+    #     quiver!([x_gt[i][1]], [x_gt[i][2]], [cos(θ) * arrow_length], [sin(θ) * arrow_length], 
+    #             label="", color=:red, arrow=true, lw=2, legend=false)
+    # end
 
     display(Obs_trajectory)
     return
