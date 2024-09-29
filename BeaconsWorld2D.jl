@@ -282,8 +282,8 @@ end
 function BeaconsWorld2D(rng)
     d = 1.0 
     rmin = 0.1
-    linear_velocity_norm = 2.0
-    angular_velocity_norm = deg2rad(90)
+    linear_velocity_norm = 1.5
+    angular_velocity_norm = deg2rad(45)
 
     # set beacons locations 
     beacons = [0.0 0.0; 
